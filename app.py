@@ -16,28 +16,47 @@ class DecimalEncoder(json.JSONEncoder):
 app = Flask(__name__)
 app.json_encoder = DecimalEncoder
 
-# Initialize DynamoDB client
-region = os.environ.get('AWS_REGION', 'us-west-2')  # fallback optional
-table_name = os.environ.get('DYNAMODB_TABLE_NAME', 'products-072025')
+# Initialize DynamoDB client and S3 client
+region = os.environ.get('AWS_REGION', 'us-west-2')
+table_name = os.environ.get('DYNAMODB_TABLE_NAME', 'products-table')
+bucket_name = os.environ.get('S3_BUCKET_NAME', 'products-bucket')
 
 dynamodb = boto3.resource('dynamodb', region_name=region)
 table = dynamodb.Table(table_name)
-
+s3 = boto3.client('s3', region_name=region)
+bucket = s3.Bucket(bucket_name)
 @app.route('/products', methods=['POST'])
 def create_product():
     try:
-        data = request.get_json()
-        
-        # Validate required fields
+        # Accept both JSON and form data
+        if request.is_json:
+            data = request.get_json()
+            image = None
+        else:
+            data = request.form.to_dict()
+            image = request.files.get('image')
+
         required_fields = ['product_name', 'price', 'brand_name', 'quantity_available']
         for field in required_fields:
             if field not in data:
                 return jsonify({'error': f'Missing required field: {field}'}), 400
-        
-        # Create product item
+
         product_id = str(uuid.uuid4())
         timestamp = datetime.now().isoformat()
-        
+
+        # Upload image to S3 if provided
+        image_url = None
+        if image and image.filename:
+            extension = os.path.splitext(image.filename)[1]
+            s3_key = f'products/{product_id}{extension}'
+            s3.upload_fileobj(
+                image,
+                bucket_name,
+                s3_key,
+                ExtraArgs={'ContentType': image.content_type}
+            )
+            image_url = f"https://{bucket_name}.s3.{region}.amazonaws.com/{s3_key}"
+
         item = {
             'product_id': product_id,
             'product_name': data['product_name'],
@@ -46,17 +65,22 @@ def create_product():
             'quantity_available': int(data['quantity_available']),
             'created_at': timestamp
         }
-        
-        # Save to DynamoDB
+
+        if image_url:
+            item['image_url'] = image_url
+            item['image_key'] = s3_key
+
         table.put_item(Item=item)
-        
+
         return jsonify({
             'message': 'Product created successfully',
-            'product_id': product_id
+            'product_id': product_id,
+            'image_url': image_url
         }), 201
-    
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
 
 @app.route('/products', methods=['GET'])
 def get_products():
@@ -72,6 +96,35 @@ def get_products():
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/form', methods=['GET'])
+def product_form():
+    return '''
+    <html>
+        <head><title>Create Product</title></head>
+        <body>
+            <h1>Create a Product</h1>
+            <form action="/products" method="post" enctype="multipart/form-data">
+                <label>Product Name:</label><br>
+                <input type="text" name="product_name" required><br><br>
+
+                <label>Price:</label><br>
+                <input type="number" step="0.01" name="price" required><br><br>
+
+                <label>Brand Name:</label><br>
+                <input type="text" name="brand_name" required><br><br>
+
+                <label>Quantity Available:</label><br>
+                <input type="number" name="quantity_available" required><br><br>
+
+                <label>Product Image:</label><br>
+                <input type="file" name="image"><br><br>
+
+                <input type="submit" value="Create Product">
+            </form>
+        </body>
+    </html>
+    '''
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
