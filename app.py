@@ -26,7 +26,6 @@ table = dynamodb.Table(table_name)
 
 if bucket_name is not None:
     s3 = boto3.client('s3', region_name=region)
-    bucket = s3.Bucket(bucket_name)
 
 @app.route('/products', methods=['POST'])
 def create_product():
