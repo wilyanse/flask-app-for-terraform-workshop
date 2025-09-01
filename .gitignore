@@ -16,3 +16,5 @@ electron-out/
 
 package-lock.json
 jsconfig.json
+
+.env
