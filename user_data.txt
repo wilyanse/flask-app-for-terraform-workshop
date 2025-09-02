@@ -4,3 +4,4 @@ sudo yum install -y docker
 sudo systemctl start docker
 sudo usermod -aG docker $USER
 sudo docker pull wilyanse/aws-flask-app:latest
+sudo docker run -d --restart unless-stopped -p 80:5000 wilyanse/aws-flask-app:latest -e AWS_REGION=ap-southeast-2 -e DYNAMODB_TABLE_NAME=products-table -e S3_BUCKET_NAME=will-image-bucket
