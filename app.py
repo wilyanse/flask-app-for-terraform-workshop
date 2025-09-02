@@ -128,5 +128,41 @@ def product_form():
     </html>
     '''
 
+@app.route('/products/<product_id>', methods=['GET'])
+def get_product(product_id):
+    try:
+        response = table.get_item(Key={'product_id': product_id})
+        item = response.get('Item')
+        if not item:
+            return jsonify({'error': 'Product not found'}), 404
+        return jsonify(item), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/products/<product_id>/view', methods=['GET'])
+def view_product_html(product_id):
+    try:
+        response = table.get_item(Key={'product_id': product_id})
+        item = response.get('Item')
+        if not item:
+            return "<h1>Product not found</h1>", 404
+
+        image_html = f'<img src="{item["image_url"]}" alt="Product Image" style="max-width:300px;"><br>' if 'image_url' in item else ''
+        return f'''
+        <html>
+            <head><title>{item["product_name"]}</title></head>
+            <body>
+                <h1>{item["product_name"]}</h1>
+                {image_html}
+                <strong>Brand:</strong> {item["brand_name"]}<br>
+                <strong>Price:</strong> ${float(item["price"]):.2f}<br>
+                <strong>Quantity Available:</strong> {item["quantity_available"]}<br>
+                <strong>Created At:</strong> {item["created_at"]}<br>
+            </body>
+        </html>
+        '''
+    except Exception as e:
+        return f"<h1>Error: {str(e)}</h1>", 500
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
